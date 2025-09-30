@@ -1,0 +1,27 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "build-raylib",
+            "command": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+            "args": [
+                "main.cpp",
+                "-L", "lib/",
+                "-o", "Hookle",
+                "-lraylib",
+                "-lopengl32",
+                "-lgdi32",
+                "-lwinmm"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "group": "build",
+            "detail": "Compiles Raylib Project"
+        }
+    ],
+    "version": "2.0.0"
+}
