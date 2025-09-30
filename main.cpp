@@ -13,6 +13,11 @@ const float playerSpeed = 100;
 const int gravity = 1300;
 const int jumpForce = 600;
 
+Color lightBlue = {181, 215, 251, 255};
+Color darkBlue = {139, 169, 225, 255};
+Color lightPurple = {41, 42, 88, 255};
+Color darkPurple = {29, 30, 97, 255};
+
 using namespace std;
 
 class platform
@@ -20,6 +25,7 @@ class platform
     public:
         Vector2 position;
         Vector2 size;
+        int thickness = 10;
 
         platform(float xPos, float yPos, float width, float height)
         {
@@ -27,9 +33,17 @@ class platform
             size = {width, height};
         }
 
+        void drawLines()
+        {
+            Rectangle tempRec = {position.x + thickness, position.y + thickness, size.x - thickness * 2, size.y - thickness * 2};
+            DrawRectangleRoundedLinesEx(tempRec, .2, 6, thickness, darkBlue);
+        }
+
         void draw()
         {
-            DrawRectangleV(position, size, DARKGRAY);
+            Rectangle tempRec = {position.x + thickness, position.y + thickness, size.x - thickness * 2, size.y - thickness * 2};
+            DrawRectangleRounded(tempRec, .2, 6, lightBlue);
+            //DrawRectangleV(position, size, DARKGRAY);
         }
 
         Rectangle getRect()
@@ -74,12 +88,34 @@ class Player
 
                     if (CheckCollisionRecs(playerRect, platRect))
                     {
-                        // Top Collision
-                        if (playerRect.y + playerRect.height - yVelocity * deltaTime <= platRect.y)
+                        // Calculate how much the player overlaps in each direction
+                        float overlapLeft   = (playerRect.x + playerRect.width) - platRect.x;
+                        float overlapRight  = (platRect.x + platRect.width) - playerRect.x;
+                        float overlapTop    = (playerRect.y + playerRect.height) - platRect.y;
+                        float overlapBottom = (platRect.y + platRect.height) - playerRect.y;
+
+                        // Find the smallest overlap
+                        float minOverlapX = (overlapLeft < overlapRight) ? overlapLeft : -overlapRight;
+                        float minOverlapY = (overlapTop < overlapBottom) ? overlapTop : -overlapBottom;
+
+                        // Resolve collision along the axis with smaller penetration
+                        if (abs(minOverlapX) < abs(minOverlapY))
                         {
-                            position.y = platRect.y - playerSize / 2;
+                            // Horizontal collision
+                            position.x -= minOverlapX;
+                            xVelocity = 0;
+                        }
+                        else
+                        {
+                            // Vertical collision 
+                            position.y -= minOverlapY;
                             yVelocity = 0;
-                            canJump = true;
+
+                            // If hitting the top of the platform, allow jumping
+                            if (minOverlapY > 0)
+                            {
+                                canJump = true;
+                            }
                         }
                     }
                 }
@@ -118,9 +154,9 @@ class Game
         {
             player.position = {screenWidth / 2, screenHeight /2};
 
-            platforms.push_back(platform(300, 500, 400, 20));
-            platforms.push_back(platform(800, 400, 200, 20));
-            platforms.push_back(platform(100, 300, 250, 20));
+            platforms.push_back(platform(300, 500, 400, 400));
+            platforms.push_back(platform(800, 400, 200, 400));
+            platforms.push_back(platform(100, 300, 250, 400));
         }
 
         void update()
@@ -141,6 +177,10 @@ class Game
             player.draw();
             for (auto& plat : platforms)
             {
+                plat.drawLines();
+            }
+            for (auto& plat : platforms)
+            {
                 plat.draw();
             }
         }
@@ -149,6 +189,11 @@ class Game
 int main () {
 
     InitWindow(screenWidth, screenHeight, "Hookle");
+
+    Image gradient = GenImageGradientLinear(screenWidth, screenHeight, 45, lightPurple, darkPurple);
+    Texture gradientTexture = LoadTextureFromImage(gradient);
+
+    UnloadImage(gradient);
 
     SetTargetFPS(60);
 
@@ -161,17 +206,19 @@ int main () {
         game.update();
 
         //Logic
-        if (IsKeyDown(KEY_SPACE) || IsKeyDown(KEY_W))
+        if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
         {
             game.player.jump();
         }
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
         {
             game.player.direction = -1;
-        } else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
+        }
+        else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
         {
             game.player.direction = 1;
-        } else
+        }
+        else
         {
             game.player.direction = 0;
         }
@@ -180,6 +227,7 @@ int main () {
         BeginDrawing();
 
         ClearBackground(WHITE);
+        DrawTexture(gradientTexture, 0, 0, WHITE);
 
         BeginMode2D(game.camera);
         game.draw();
@@ -188,6 +236,7 @@ int main () {
         EndDrawing();
     }
 
+    UnloadTexture(gradientTexture);
     CloseWindow();
     return 0;
 }
