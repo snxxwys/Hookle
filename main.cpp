@@ -18,6 +18,10 @@ Color darkBlue = {139, 169, 225, 255};
 Color lightPurple = {41, 42, 88, 255};
 Color darkPurple = {29, 30, 97, 255};
 
+Color white = {215, 215, 215, 255};
+Color whiter = {225, 225, 225, 255};
+Color black = {25, 25, 25, 255};
+
 using namespace std;
 
 class platform
@@ -33,17 +37,17 @@ class platform
             size = {width, height};
         }
 
-        void drawLines()
+        /*/void drawLines()
         {
             Rectangle tempRec = {position.x + thickness, position.y + thickness, size.x - thickness * 2, size.y - thickness * 2};
             DrawRectangleRoundedLinesEx(tempRec, .2, 6, thickness, darkBlue);
-        }
+        }/*/
 
         void draw()
         {
-            Rectangle tempRec = {position.x + thickness, position.y + thickness, size.x - thickness * 2, size.y - thickness * 2};
-            DrawRectangleRounded(tempRec, .2, 6, lightBlue);
-            //DrawRectangleV(position, size, DARKGRAY);
+            //Rectangle tempRec = {position.x + thickness, position.y + thickness, size.x - thickness * 2, size.y - thickness * 2};
+            //DrawRectangleRounded(tempRec, .2, 6, lightBlue);
+            DrawRectangleV(position, size, black);
         }
 
         Rectangle getRect()
@@ -61,13 +65,17 @@ class Player
         float xVelocity = 0;
         float yVelocity = 0;
 
+        float thickness = 10;
+
         bool canJump = true;
 
         void draw()
         {
             Rectangle tempRec = Rectangle{position.x - playerSize/2, position.y - playerSize/2, playerSize, playerSize};
 
-            DrawRectangleRounded(tempRec, .3, 6, BLACK);
+            //DrawRectangleRounded(tempRec, .3, 6, BLACK);
+            DrawRectangle(position.x - playerSize/2, position.y - playerSize/2, playerSize, playerSize, whiter);
+            DrawRectangleLinesEx(tempRec, 10, black);
         }
 
         void update(vector<platform>& platforms)
@@ -154,9 +162,9 @@ class Game
         {
             player.position = {screenWidth / 2, screenHeight /2};
 
-            platforms.push_back(platform(300, 500, 400, 400));
-            platforms.push_back(platform(800, 400, 200, 400));
-            platforms.push_back(platform(100, 300, 250, 400));
+            platforms.push_back(platform(300, 500, 400, 40));
+            platforms.push_back(platform(800, 400, 200, 40));
+            platforms.push_back(platform(100, 300, 250, 40));
         }
 
         void update()
@@ -175,14 +183,20 @@ class Game
         void draw()
         {
             player.draw();
-            for (auto& plat : platforms)
+            /*/for (auto& plat : platforms)
             {
                 plat.drawLines();
-            }
+            }/*/
             for (auto& plat : platforms)
             {
                 plat.draw();
             }
+        }
+
+        void reset(Sound resetSound)
+        {
+            PlaySound(resetSound);
+            player.position = {screenWidth / 2, screenHeight /2};
         }
 };
 
@@ -190,15 +204,19 @@ int main () {
 
     InitWindow(screenWidth, screenHeight, "Hookle");
 
-    Image gradient = GenImageGradientLinear(screenWidth, screenHeight, 45, lightPurple, darkPurple);
+    /*/Image gradient = GenImageGradientLinear(screenWidth, screenHeight, 45, lightPurple, darkPurple);
     Texture gradientTexture = LoadTextureFromImage(gradient);
 
-    UnloadImage(gradient);
+    UnloadImage(gradient);/*/
 
     SetTargetFPS(60);
 
     Game game = Game();
     game.gameStart();
+
+    InitAudioDevice();
+
+    Sound resetSound = LoadSound("sounds/reset.mp3");
 
     while(WindowShouldClose() == false)
     {
@@ -210,6 +228,12 @@ int main () {
         {
             game.player.jump();
         }
+
+        if (IsKeyDown(KEY_R))
+        {
+            game.reset(resetSound);
+        }
+
         if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
         {
             game.player.direction = -1;
@@ -226,8 +250,8 @@ int main () {
         //Drawing
         BeginDrawing();
 
-        ClearBackground(WHITE);
-        DrawTexture(gradientTexture, 0, 0, WHITE);
+        ClearBackground(white);
+        //DrawTexture(gradientTexture, 0, 0, WHITE);
 
         BeginMode2D(game.camera);
         game.draw();
@@ -236,7 +260,11 @@ int main () {
         EndDrawing();
     }
 
-    UnloadTexture(gradientTexture);
+    UnloadSound(resetSound);
+    CloseAudioDevice();
+
+    //UnloadTexture(gradientTexture);
+
     CloseWindow();
     return 0;
 }
