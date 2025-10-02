@@ -106,14 +106,14 @@ class Player
                     }
                 }
             }
-            if (position.x < playerSize / 2) position.x = playerSize / 2;
-            if (position.x > screenWidth - playerSize / 2) position.x = screenWidth - playerSize / 2;
-            if (position.y > screenHeight - playerSize / 2)
+            //if (position.x < playerSize / 2) position.x = playerSize / 2;
+            //if (position.x > screenWidth - playerSize / 2) position.x = screenWidth - playerSize / 2;
+            /*if (position.y > screenHeight - playerSize / 2)
             {
                 position.y = screenHeight - playerSize / 2;
                 yVelocity = 0;
                 canJump = true;
-            }
+            }*/
         }
         void jump()
         {
@@ -427,6 +427,8 @@ int main () {
     InitAudioDevice();
     Sound resetSound = LoadSound("sounds/reset.mp3");
 
+    game.loadFromJson("main.json");
+
     while (!WindowShouldClose())
     {
         if (IsKeyPressed(KEY_E))
@@ -436,13 +438,13 @@ int main () {
             game.selectedIndex = -1;
         }
 
-        if (IsKeyPressed(KEY_S))
+        if (IsKeyPressed(KEY_O))
         {
-            game.saveToJson("level.json");
+            game.saveToJson("main.json");
         }
         if (IsKeyPressed(KEY_L))
         {
-            game.loadFromJson("level.json");
+            game.loadFromJson("main.json");
         }
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE))
         {
@@ -455,6 +457,11 @@ int main () {
 
         if (!game.editMode)
         {
+            if (game.player.position.y > 1000)
+            {
+                game.reset(resetSound);
+            }
+
             if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) game.player.jump();
             if (IsKeyDown(KEY_R)) game.reset(resetSound);
             if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) game.player.direction = -1;
@@ -494,7 +501,7 @@ int main () {
         EndMode2D();
 
         DrawText("EDITOR MODE", 10, 10, 18, black);
-        DrawText("E - Toggle | Right-click - New Box | Delete - Remove | S - Save | L - Load", 10, 30, 18, black);
+        DrawText("E - Toggle | Right-click - New Box | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
         
 
         EndDrawing();
