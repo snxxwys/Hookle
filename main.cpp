@@ -438,11 +438,11 @@ int main () {
             game.selectedIndex = -1;
         }
 
-        if (IsKeyPressed(KEY_O))
+        if (IsKeyPressed(KEY_O) && game.editMode)
         {
             game.saveToJson("main.json");
         }
-        if (IsKeyPressed(KEY_L))
+        if (IsKeyPressed(KEY_L) && game.editMode)
         {
             game.loadFromJson("main.json");
         }
