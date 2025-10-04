@@ -142,7 +142,24 @@ class Player
                     }
                     else
                     {
-                        angularVelocity = -angularVelocity * .95f;
+                        cout << angularVelocity << endl;
+
+                        if (fabs(angularVelocity) < 1.0f)
+                            {
+                                angularVelocity = 0;
+                                swinging = false;
+                                xVelocity = 0;
+                                yVelocity = 0;
+
+                                if (abs(minOverlapX) < abs(minOverlapY))
+                                    position.x -= minOverlapX;
+                                else
+                                    position.y -= minOverlapY;
+                            }
+                        else
+                        {
+                            angularVelocity = -angularVelocity * .95f;
+                        }
                     }
                 }
             }
