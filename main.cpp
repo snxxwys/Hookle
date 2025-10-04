@@ -63,8 +63,21 @@ class Player
         float thickness = 10;
         bool canJump = true;
 
+        bool swinging = false;
+        Vector2 anchor;
+        float ropeLength;
+        float ropeAngle;
+        float angularVelocity;
+
+        bool wasSwingingLastFrame = false;
+
         void draw()
-        {
+        {   
+            if (swinging) {
+                DrawLineV(anchor, position, black);
+                DrawCircleV(anchor, 4, black);
+            }
+
             Rectangle tempRec = Rectangle{position.x - playerSize/2, position.y - playerSize/2, playerSize, playerSize};
             DrawRectangle(position.x - playerSize/2, position.y - playerSize/2, playerSize, playerSize, whiter);
             DrawRectangleLinesEx(tempRec, 10, black);
@@ -73,11 +86,30 @@ class Player
         void update(vector<platform>& platforms)
         {
             float deltaTime = GetFrameTime();
-            xVelocity = (xVelocity + direction) * friction;
-            position.x += xVelocity * deltaTime * playerSpeed;
-            yVelocity += gravity * deltaTime;
-            position.y += yVelocity * deltaTime;
+
+            if (swinging) {
+                float g = 1300.0f;
+                float angularAccel = -(g / ropeLength) * sinf(ropeAngle - PI/2);
+
+                if (IsKeyDown(KEY_D)) angularAccel -= 2.0f;
+                if (IsKeyDown(KEY_A)) angularAccel += 2.0f;
+
+                angularVelocity += angularAccel * deltaTime;
+                angularVelocity *= 0.995f;
+                ropeAngle += angularVelocity * deltaTime;
+
+                position.x = anchor.x + ropeLength * cosf(ropeAngle);
+                position.y = anchor.y + ropeLength * sinf(ropeAngle);
+            } else {
+                xVelocity = (xVelocity + direction) * friction;
+                position.x += xVelocity * deltaTime * playerSpeed;
+                yVelocity += gravity * deltaTime;
+                position.y += yVelocity * deltaTime;
+            }
+
+
             canJump = false;
+
             for (auto& plat : platforms)
             {
                 Rectangle platRect = plat.getRect();
@@ -106,14 +138,8 @@ class Player
                     }
                 }
             }
-            //if (position.x < playerSize / 2) position.x = playerSize / 2;
-            //if (position.x > screenWidth - playerSize / 2) position.x = screenWidth - playerSize / 2;
-            /*if (position.y > screenHeight - playerSize / 2)
-            {
-                position.y = screenHeight - playerSize / 2;
-                yVelocity = 0;
-                canJump = true;
-            }*/
+            
+            wasSwingingLastFrame = swinging;
         }
         void jump()
         {
@@ -373,6 +399,9 @@ class Game
         {
             PlaySound(resetSound);
             player.position = {screenWidth / 2, screenHeight /2};
+            player.xVelocity = 0;
+            player.yVelocity = 0;
+            player.swinging = false;
         }
 
         bool saveToJson(const string &path)
@@ -467,6 +496,37 @@ int main () {
             if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) game.player.direction = -1;
             else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) game.player.direction = 1;
             else game.player.direction = 0;
+
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            {
+                Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), game.camera);
+                game.player.anchor = mouseWorld;
+                Vector2 diff = Vector2Subtract(game.player.position, game.player.anchor);
+                game.player.ropeLength = Vector2Length(diff);
+                game.player.ropeAngle = atan2f(diff.y, diff.x);
+                game.player.angularVelocity = 0.0f;
+                game.player.swinging = true;
+            }
+
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+            {
+                if (game.player.swinging) 
+                {
+                    Vector2 toPlayer = Vector2Subtract(game.player.position, game.player.anchor);
+                    float len = Vector2Length(toPlayer);
+
+                    if (len != 0)
+                    {
+                        Vector2 tangent = { -toPlayer.y / len, toPlayer.x / len };
+
+                        float speed = game.player.angularVelocity * game.player.ropeLength;
+                        game.player.xVelocity = tangent.x * speed / 25;
+                        game.player.yVelocity = tangent.y * speed;
+                    }
+                }
+
+                game.player.swinging = false;
+            }
         }
         else
         {
