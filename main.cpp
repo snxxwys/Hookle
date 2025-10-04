@@ -122,19 +122,27 @@ class Player
                     float overlapBottom = (platRect.y + platRect.height) - playerRect.y;
                     float minOverlapX = (overlapLeft < overlapRight) ? overlapLeft : -overlapRight;
                     float minOverlapY = (overlapTop < overlapBottom) ? overlapTop : -overlapBottom;
-                    if (abs(minOverlapX) < abs(minOverlapY))
+
+                    if (!swinging)
                     {
-                        position.x -= minOverlapX;
-                        xVelocity = 0;
+                        if (abs(minOverlapX) < abs(minOverlapY))
+                        {
+                            position.x -= minOverlapX;
+                            xVelocity = 0;
+                        }
+                        else
+                        {
+                            position.y -= minOverlapY;
+                            yVelocity = 0;
+                            if (minOverlapY > 0)
+                            {
+                                canJump = true;
+                            }
+                        }
                     }
                     else
                     {
-                        position.y -= minOverlapY;
-                        yVelocity = 0;
-                        if (minOverlapY > 0)
-                        {
-                            canJump = true;
-                        }
+                        angularVelocity = -angularVelocity * .95f;
                     }
                 }
             }
