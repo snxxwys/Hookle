@@ -501,10 +501,17 @@ int main () {
             {
                 Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), game.camera);
                 game.player.anchor = mouseWorld;
+
                 Vector2 diff = Vector2Subtract(game.player.position, game.player.anchor);
                 game.player.ropeLength = Vector2Length(diff);
                 game.player.ropeAngle = atan2f(diff.y, diff.x);
-                game.player.angularVelocity = 0.0f;
+
+                if (game.player.ropeLength != 0)
+                {
+                    Vector2 tangent = { -diff.y / game.player.ropeLength, diff.x / game.player.ropeLength };
+                    game.player.angularVelocity = (game.player.xVelocity * tangent.x + game.player.yVelocity * tangent.y) / game.player.ropeLength;
+                }
+
                 game.player.swinging = true;
             }
 
@@ -520,7 +527,7 @@ int main () {
                         Vector2 tangent = { -toPlayer.y / len, toPlayer.x / len };
 
                         float speed = game.player.angularVelocity * game.player.ropeLength;
-                        game.player.xVelocity = tangent.x * speed / 25;
+                        game.player.xVelocity = tangent.x * speed / 35;
                         game.player.yVelocity = tangent.y * speed;
                     }
                 }
