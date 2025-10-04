@@ -480,6 +480,14 @@ int main () {
 
     InitAudioDevice();
     Sound resetSound = LoadSound("sounds/reset.mp3");
+    Sound releaseSound = LoadSound("sounds/release.mp3");
+    Sound launchSound = LoadSound("sounds/launch.mp3");
+
+    Sound saveSound = LoadSound("sounds/save.mp3");
+    Sound loadSound = LoadSound("sounds/load.wav");
+
+    Music music = LoadMusicStream("sounds/music.mp3");
+    SetMusicVolume(music, .2f);
 
     game.loadFromJson("main.json");
 
@@ -495,10 +503,12 @@ int main () {
         if (IsKeyPressed(KEY_O) && game.editMode)
         {
             game.saveToJson("main.json");
+            PlaySound(saveSound);
         }
         if (IsKeyPressed(KEY_L) && game.editMode)
         {
             game.loadFromJson("main.json");
+            PlaySound(loadSound);
         }
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE))
         {
@@ -507,6 +517,13 @@ int main () {
                 game.platforms.erase(game.platforms.begin() + game.selectedIndex);
                 game.selectedIndex = -1;
             }
+        }
+
+        UpdateMusicStream(music);
+
+        if (!IsMusicStreamPlaying(music))
+        {
+            PlayMusicStream(music);
         }
 
         if (!game.editMode)
@@ -537,6 +554,7 @@ int main () {
                     game.player.angularVelocity = (game.player.xVelocity * tangent.x + game.player.yVelocity * tangent.y) / game.player.ropeLength;
                 }
 
+                PlaySound(launchSound);
                 game.player.swinging = true;
             }
 
@@ -554,6 +572,11 @@ int main () {
                         float speed = game.player.angularVelocity * game.player.ropeLength;
                         game.player.xVelocity = tangent.x * speed / 35;
                         game.player.yVelocity = tangent.y * speed;
+
+                        if (abs(speed) > 1)
+                        {
+                            PlaySound(releaseSound);
+                        }
                     }
                 }
 
@@ -592,15 +615,23 @@ int main () {
 
         EndMode2D();
 
-        DrawText("EDITOR MODE", 10, 10, 18, black);
-        DrawText("E - Toggle | Right-click - New Box | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
-        
+        if (game.editMode)
+        {
+            DrawText("EDITOR MODE", 10, 10, 18, black);
+            DrawText("E - Toggle | Right-click - New Box | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
+        }
 
         EndDrawing();
     }
 
     UnloadSound(resetSound);
+    UnloadSound(releaseSound);
+    UnloadSound(launchSound);
+    UnloadSound(loadSound);
+    UnloadSound(saveSound);
+    UnloadMusicStream(music);
     CloseAudioDevice();
+    
     CloseWindow();
     return 0;
 }
