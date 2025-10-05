@@ -472,6 +472,7 @@ class Game
 
 int main () {
 
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Hookle Editor");
     SetTargetFPS(60);
 
