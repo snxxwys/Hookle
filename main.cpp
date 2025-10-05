@@ -5,6 +5,9 @@
 #include <sstream>
 #include "raylib.h"
 #include "raymath.h"
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+#include <filesystem>
 
 const int screenWidth = 1280;
 const int screenHeight = 720;
@@ -13,6 +16,8 @@ const float friction = .9f;
 const float playerSpeed = 100;
 const int gravity = 1300;
 const int jumpForce = 600;
+
+bool blockInput = false;
 
 Color lightBlue = {181, 215, 251, 255};
 Color darkBlue = {139, 169, 225, 255};
@@ -26,6 +31,7 @@ Color hover = {63, 63, 63, 255};
 Color selected = {209, 94, 71, 255};
 
 using namespace std;
+namespace fs = filesystem;
 
 class platform
 {
@@ -377,7 +383,7 @@ class Game
             {
                 Vector2 mouseScreen = GetMousePosition();
                 Vector2 mouseWorld = GetScreenToWorld2D(mouseScreen, camera);
-                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !blockInput)
                 {
                     int idx = pickPlatformAtPoint(mouseWorld);
                     int spikeIdx = pickSpikeAtPoint(mouseWorld);
@@ -435,7 +441,7 @@ class Game
                     }
                 }
 
-                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !blockInput)
                 {
                     if (draggingSpike && selectedSpikeIndex != -1)
                     {
@@ -447,7 +453,7 @@ class Game
                     }
                 }
 
-                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && !blockInput)
                 {
                     if (draggingSpike && selectedSpikeIndex != -1)
                     {
@@ -483,7 +489,7 @@ class Game
                     }
                 }
 
-                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
+                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !blockInput)
                 {
                     Vector2 size = {150, 30};
                     Vector2 pos = { mouseWorld.x - size.x/2.0f, mouseWorld.y - size.y/2.0f };
@@ -589,6 +595,9 @@ class Game
 
         bool saveToJson(const string &path)
         {
+            namespace fs = filesystem;
+            fs::create_directories("levels");
+
             ofstream out(path);
             if (!out.is_open()) return false;
 
@@ -660,6 +669,19 @@ class Game
         }
 };
 
+vector<string> getLevelFiles()
+{
+    vector<string> files;
+    fs::create_directories("levels");
+
+    for (auto &entry : fs::directory_iterator("levels")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".json") {
+            files.push_back(entry.path().stem().string());
+        }
+    }
+    return files;
+}
+
 int main () {
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
@@ -683,28 +705,37 @@ int main () {
     Image icon = LoadImage("textures/icon.png");
     SetWindowIcon(icon);
 
-    game.loadFromJson("main.json");
+    game.loadFromJson("tutorial.json");
+
+    bool showSaveBox = false;
+    bool showLoadBox = false;
+
+    char userSaveBuffer[1024];
+    strcpy(userSaveBuffer, "Level");
+
+    vector<string> levelFiles;
+    int selectedLevelIndex = -1;
 
     while (!WindowShouldClose())
     {
-        if (IsKeyPressed(KEY_E))
+        if (IsKeyPressed(KEY_E) && !blockInput)
         {
             game.editMode = !game.editMode;
             game.currentAction = NONE;
             game.selectedIndex = -1;
         }
 
-        if (IsKeyPressed(KEY_O) && game.editMode)
+        if (IsKeyPressed(KEY_O) && game.editMode && !blockInput)
         {
-            game.saveToJson("main.json");
-            PlaySound(saveSound);
+            showSaveBox = true;
         }
-        if (IsKeyPressed(KEY_L) && game.editMode)
+        if (IsKeyPressed(KEY_L) && game.editMode && !blockInput)
         {
-            game.loadFromJson("main.json");
-            PlaySound(loadSound);
+            showLoadBox = true;
+            //game.loadFromJson("main.json");
+            //PlaySound(loadSound);
         }
-        if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE))
+        if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE) && !blockInput)
         {
             if (game.editMode)
             {
@@ -735,13 +766,13 @@ int main () {
                 game.reset(resetSound);
             }
 
-            if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W)) game.player.jump();
-            if (IsKeyDown(KEY_R)) game.reset(resetSound);
-            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A)) game.player.direction = -1;
-            else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D)) game.player.direction = 1;
+            if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W) && !blockInput) game.player.jump();
+            if (IsKeyDown(KEY_R) && !blockInput) game.reset(resetSound);
+            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) && !blockInput) game.player.direction = -1;
+            else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D) && !blockInput) game.player.direction = 1;
             else game.player.direction = 0;
 
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !blockInput)
             {
                 Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), game.camera);
                 game.player.anchor = mouseWorld;
@@ -760,7 +791,7 @@ int main () {
                 game.player.swinging = true;
             }
 
-            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && !blockInput)
             {
                 if (game.player.swinging) 
                 {
@@ -787,19 +818,19 @@ int main () {
         }
         else
         {
-            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A))
+            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A) && !blockInput)
             {
                 game.camera.target.x -= 400 * GetFrameTime();
             }
-            else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D))
+            else if (IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D) && !blockInput)
             {
                 game.camera.target.x += 400 * GetFrameTime();
             }
-            if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W))
+            if (IsKeyDown(KEY_UP) || IsKeyDown(KEY_W) && !blockInput)
             {
                 game.camera.target.y -= 400 * GetFrameTime();
             }
-            else if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S))
+            else if (IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S) && !blockInput)
             {
                 game.camera.target.y += 400 * GetFrameTime();
             }
@@ -821,6 +852,88 @@ int main () {
         {
             DrawText("EDITOR MODE", 10, 10, 18, black);
             DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
+        }
+
+        if (showSaveBox)
+        {
+            Vector2 size = {700, 200};
+            Rectangle rec = Rectangle{(screenWidth - size.x) / 2, (screenHeight - size.y) / 2, size.x, size.y};
+            int result = GuiTextInputBox(rec, "Save Level", "Input Level Save Name", "Save", userSaveBuffer, sizeof(userSaveBuffer), 0);
+            blockInput = true;
+
+            if (result >= 0)
+            {
+                showSaveBox = false;
+                blockInput = false;
+                if (result == 1)
+                {
+                    game.saveToJson("levels/" + (string)userSaveBuffer + ".json");
+                    PlaySound(saveSound);
+                }
+            }
+        }
+
+        if (showLoadBox)
+        {
+            Vector2 size = {700, 400};
+            Rectangle rec = { (screenWidth - size.x) / 2, (screenHeight - size.y) / 2, size.x, size.y };
+
+            static bool initialized = false;
+            static Vector2 scroll = { 0, 0 };
+            static Rectangle content = { 0, 0, 0, 0 };
+            static Rectangle view = { 0, 0, 0, 0 };
+            blockInput = true;
+
+            if (!initialized) {
+                levelFiles = getLevelFiles();
+                initialized = true;
+            }
+
+            DrawRectangleRec(rec, WHITE);
+            DrawRectangleLinesEx(rec, 2, BLACK);
+            DrawText("Load Level", rec.x + 10, rec.y + 10, 30, BLACK);
+
+            // Scroll panel area
+            Rectangle panel = { rec.x + 30, rec.y + 60, rec.width - 60, rec.height - 120 };
+            float buttonHeight = 40;
+            float spacing = 8;
+            float totalHeight = (buttonHeight + spacing) * (float)levelFiles.size();
+
+            content = { 0, 0, panel.width - 20, totalHeight }; // scrollable content size
+
+            // ✅ NEW: updated function call
+            GuiScrollPanel(panel, NULL, content, &scroll, &view);
+
+            BeginScissorMode(panel.x, panel.y, panel.width, panel.height);
+
+            for (int i = 0; i < (int)levelFiles.size(); i++) {
+                float yPos = panel.y + scroll.y + (i * (buttonHeight + spacing));
+                if (yPos + buttonHeight < panel.y || yPos > panel.y + panel.height) continue;
+
+                Rectangle buttonRec = { panel.x + 10, yPos, panel.width - 40, buttonHeight };
+                if (GuiButton(buttonRec, levelFiles[i].c_str())) {
+                    selectedLevelIndex = i;
+                    std::string filename = "levels/" + levelFiles[i] + ".json";
+                    game.loadFromJson(filename);
+                    PlaySound(loadSound);
+                    showLoadBox = false;
+                    blockInput = false;
+                    initialized = false;
+                }
+
+                if (i == selectedLevelIndex)
+                    DrawRectangleLinesEx(buttonRec, 2, BLUE);
+            }
+
+            EndScissorMode();
+
+            // Close button
+            Rectangle closeBtn = { rec.x + size.x - 110, rec.y + size.y - 50, 100, 35 };
+            if (GuiButton(closeBtn, "Close")) {
+                showLoadBox = false;
+                blockInput = false;
+                initialized = false;
+            }
         }
 
         EndDrawing();
