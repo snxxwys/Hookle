@@ -53,6 +53,33 @@ class platform
         }
 };
 
+class Spike
+{
+    public:
+        Vector2 position;
+        float size;
+
+        Spike() { position = {0,0}; size = 40; }
+        Spike(float x, float y, float s = 40) { position = {x,y}; size = s; }
+
+        void draw(bool highlight = false)
+        {
+            Vector2 p1 = { position.x, position.y };
+            Vector2 p2 = { position.x + size / 2, position.y - size };
+            Vector2 p3 = { position.x + size, position.y };
+
+            Color fill = highlight ? lightPurple : selected;
+
+            DrawTriangle(p3, p2, p1, fill);
+        }
+
+        Rectangle getRect() const
+        {
+            return Rectangle{ position.x, position.y - size, size, size };
+        }
+};
+
+
 class Player
 {
     public:
@@ -83,7 +110,7 @@ class Player
             DrawRectangleLinesEx(tempRec, 10, black);
         }
 
-        void update(vector<platform>& platforms)
+        void update(vector<platform>& platforms, vector<Spike>& spikes)
         {
             float deltaTime = GetFrameTime();
 
@@ -142,8 +169,6 @@ class Player
                     }
                     else
                     {
-                        cout << angularVelocity << endl;
-
                         if (fabs(angularVelocity) < 1.0f)
                             {
                                 angularVelocity = 0;
@@ -161,6 +186,19 @@ class Player
                             angularVelocity = -angularVelocity * .95f;
                         }
                     }
+                }
+            }
+
+            for (auto& s : spikes)
+            {
+                Rectangle spikeRect = s.getRect();
+                Rectangle playerRect = {position.x - playerSize/2, position.y - playerSize/2, playerSize, playerSize};
+                if (CheckCollisionRecs(playerRect, spikeRect))
+                {
+                    position = {screenWidth / 2, screenHeight /2};
+                    xVelocity = 0;
+                    yVelocity = 0;
+                    swinging = false;
                 }
             }
             
@@ -191,6 +229,7 @@ class Game
     public:
         Player player = Player();
         vector<platform> platforms;
+        vector<Spike> spikes;
         Camera2D camera = {0};
         bool editMode = false;
         int selectedIndex = -1;
@@ -201,6 +240,9 @@ class Game
         Vector2 originalSize = {0,0};
         float edgeGrab = 8.0f;
         float minSize = 8.0f;
+        bool draggingSpike = false;
+        int selectedSpikeIndex = -1;
+        Vector2 spikeDragOffset = {0, 0};
 
         void gameStart()
         {
@@ -212,6 +254,8 @@ class Game
             camera.rotation = 0;
             camera.zoom = 1.0f;
             camera.target = player.position;
+
+            spikes.push_back(Spike(600, 500));
         }
 
         int pickPlatformAtPoint(Vector2 worldPoint)
@@ -219,6 +263,16 @@ class Game
             for (int i = (int)platforms.size()-1; i >= 0; --i)
             {
                 Rectangle r = platforms[i].getRect();
+                if (CheckCollisionPointRec(worldPoint, r)) return i;
+            }
+            return -1;
+        }
+
+        int pickSpikeAtPoint(Vector2 worldPoint)
+        {
+            for (int i = (int)spikes.size() - 1; i >= 0; --i)
+            {
+                Rectangle r = spikes[i].getRect();
                 if (CheckCollisionPointRec(worldPoint, r)) return i;
             }
             return -1;
@@ -315,7 +369,7 @@ class Game
             float lerpFactor = 0.1f;
             if (!editMode)
             {
-                player.update(platforms);
+                player.update(platforms, spikes);
                 camera.target.x = Lerp(camera.target.x, player.position.x, lerpFactor);
                 camera.target.y = Lerp(camera.target.y, player.position.y, lerpFactor);
             }
@@ -326,22 +380,120 @@ class Game
                 if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON))
                 {
                     int idx = pickPlatformAtPoint(mouseWorld);
-                    startDrag(idx, mouseWorld);
+                    int spikeIdx = pickSpikeAtPoint(mouseWorld);
+
+                    if (spikeIdx != -1)
+                    {
+                        // --- Spike selection toggle ---
+                        if (selectedSpikeIndex == spikeIdx)
+                            selectedSpikeIndex = -1;
+                        else {
+                            selectedSpikeIndex = spikeIdx;
+                            selectedIndex = -1;
+                        }
+
+                        if (selectedSpikeIndex != -1)
+                        {
+                            draggingSpike = true;
+                            spikeDragOffset = Vector2Subtract(spikes[spikeIdx].position, mouseWorld);
+                        }
+                    }
+                    else if (idx != -1)
+                    {
+                        platform &p = platforms[idx];
+                        ResizeMask m = calcResizeMask(p, mouseWorld);
+
+                        // --- Check if we're clicking the edge of the selected platform ---
+                        if (selectedIndex == idx && m.any())
+                        {
+                            currentAction = RESIZE;
+                            resizeMask = m;
+                            originalPos = p.position;
+                            originalSize = p.size;
+                        }
+                        else
+                        {
+                            // --- Toggle selection ---
+                            if (selectedIndex == idx)
+                                selectedIndex = -1;
+                            else {
+                                selectedIndex = idx;
+                                selectedSpikeIndex = -1;
+                            }
+
+                            // Start drag only if we actually selected it
+                            if (selectedIndex != -1)
+                            {
+                                startDrag(idx, mouseWorld);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        selectedIndex = -1;
+                        selectedSpikeIndex = -1;
+                    }
                 }
-                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && currentAction != NONE)
+
+                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
                 {
-                    applyDrag(mouseWorld);
+                    if (draggingSpike && selectedSpikeIndex != -1)
+                    {
+                        spikes[selectedSpikeIndex].position = Vector2Add(mouseWorld, spikeDragOffset);
+                    }
+                    else if (currentAction != NONE)
+                    {
+                        applyDrag(mouseWorld);
+                    }
                 }
+
                 if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON))
                 {
-                    endDrag();
+                    if (draggingSpike && selectedSpikeIndex != -1)
+                    {
+                        // --- SNAP TO PLATFORM TOP ---
+                        float snapThreshold = 20.0f;
+                        Spike &s = spikes[selectedSpikeIndex];
+
+                        for (auto &p : platforms)
+                        {
+                            Rectangle pr = p.getRect();
+                            float topY = pr.y;
+
+                            bool withinX =
+                                (s.position.x + s.size / 2 > pr.x - snapThreshold) &&
+                                (s.position.x + s.size / 2 < pr.x + pr.width + snapThreshold);
+
+                            bool nearTop = fabs((s.position.y) - topY) < snapThreshold;
+
+                            if (withinX && nearTop)
+                            {
+                                s.position.y = topY; // Snap vertically
+                                s.position.x = Clamp(s.position.x, pr.x - s.size / 2, pr.x + pr.width - s.size / 2);
+                                break;
+                            }
+                        }
+
+                        draggingSpike = false;
+                        selectedSpikeIndex = -1;
+                    }
+                    else
+                    {
+                        endDrag();
+                    }
                 }
+
                 if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON))
                 {
                     Vector2 size = {150, 30};
                     Vector2 pos = { mouseWorld.x - size.x/2.0f, mouseWorld.y - size.y/2.0f };
                     platforms.emplace_back(pos.x, pos.y, size.x, size.y);
                     selectedIndex = (int)platforms.size() - 1;
+                }
+                if (IsKeyPressed(KEY_Q))
+                {
+                    Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), camera);
+                    spikes.emplace_back(mouseWorld.x - 20, mouseWorld.y + 20);
                 }
             }
             camera.offset = {screenWidth/2.0f, screenHeight/2.0f};
@@ -418,6 +570,12 @@ class Game
                 }*/
                 drawEditorUI();
             }
+
+            for (int i = 0; i < (int)spikes.size(); i++)
+            {
+                bool highlight = (i == selectedSpikeIndex);
+                spikes[i].draw(highlight);
+            }
         }
 
         void reset(Sound resetSound)
@@ -433,14 +591,31 @@ class Game
         {
             ofstream out(path);
             if (!out.is_open()) return false;
-            out << "[\n";
+
+            out << "{\n";
+            out << "  \"platforms\": [\n";
             for (size_t i = 0; i < platforms.size(); ++i)
             {
                 platform &p = platforms[i];
-                out << "  {\"x\":" << p.position.x << ",\"y\":" << p.position.y << ",\"w\":" << p.size.x << ",\"h\":" << p.size.y << "}";
-                if (i + 1 < platforms.size()) out << ",\n"; else out << "\n";
+                out << "    {\"x\":" << p.position.x << ",\"y\":" << p.position.y
+                    << ",\"w\":" << p.size.x << ",\"h\":" << p.size.y << "}";
+                if (i + 1 < platforms.size()) out << ",";
+                out << "\n";
             }
-            out << "]\n";
+            out << "  ],\n";
+
+            out << "  \"spikes\": [\n";
+            for (size_t i = 0; i < spikes.size(); ++i)
+            {
+                Spike &s = spikes[i];
+                out << "    {\"x\":" << s.position.x << ",\"y\":" << s.position.y
+                    << ",\"size\":" << s.size << "}";
+                if (i + 1 < spikes.size()) out << ",";
+                out << "\n";
+            }
+            out << "  ]\n";
+            out << "}\n";
+
             out.close();
             return true;
         }
@@ -451,20 +626,35 @@ class Game
             if (!in.is_open()) return false;
             string content((istreambuf_iterator<char>(in)), istreambuf_iterator<char>());
             in.close();
-            regex numberRegex("(-?\\d+\\.?\\d*)");
-            sregex_iterator it(content.begin(), content.end(), numberRegex);
+
+            // --- Load platforms ---
+            regex platformRegex("\\{\"x\":(.*?),\"y\":(.*?),\"w\":(.*?),\"h\":(.*?)\\}");
+            sregex_iterator pit(content.begin(), content.end(), platformRegex);
             sregex_iterator end;
-            vector<float> nums;
-            for (; it != end; ++it)
-            {
-                nums.push_back(stof((*it)[1].str()));
-            }
             vector<platform> newPlats;
-            for (size_t i = 0; i + 3 < nums.size(); i += 4)
+            for (; pit != end; ++pit)
             {
-                newPlats.emplace_back(nums[i+0], nums[i+1], nums[i+2], nums[i+3]);
+                float x = stof((*pit)[1].str());
+                float y = stof((*pit)[2].str());
+                float w = stof((*pit)[3].str());
+                float h = stof((*pit)[4].str());
+                newPlats.emplace_back(x, y, w, h);
             }
+
+            // --- Load spikes ---
+            regex spikeRegex("\\{\"x\":(.*?),\"y\":(.*?),\"size\":(.*?)\\}");
+            sregex_iterator sit(content.begin(), content.end(), spikeRegex);
+            vector<Spike> newSpikes;
+            for (; sit != end; ++sit)
+            {
+                float x = stof((*sit)[1].str());
+                float y = stof((*sit)[2].str());
+                float size = stof((*sit)[3].str());
+                newSpikes.emplace_back(x, y, size);
+            }
+
             platforms = std::move(newPlats);
+            spikes = std::move(newSpikes);
             selectedIndex = -1;
             return true;
         }
@@ -473,7 +663,7 @@ class Game
 int main () {
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-    InitWindow(screenWidth, screenHeight, "Hookle Editor");
+    InitWindow(screenWidth, screenHeight, "Hookle");
     SetTargetFPS(60);
 
     Game game = Game();
@@ -489,6 +679,9 @@ int main () {
 
     Music music = LoadMusicStream("sounds/music.mp3");
     SetMusicVolume(music, .2f);
+
+    Image icon = LoadImage("textures/icon.png");
+    SetWindowIcon(icon);
 
     game.loadFromJson("main.json");
 
@@ -513,10 +706,18 @@ int main () {
         }
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE))
         {
-            if (game.editMode && game.selectedIndex >= 0 && game.selectedIndex < (int)game.platforms.size())
+            if (game.editMode)
             {
-                game.platforms.erase(game.platforms.begin() + game.selectedIndex);
-                game.selectedIndex = -1;
+                if (game.selectedIndex >= 0 && game.selectedIndex < (int)game.platforms.size())
+                {
+                    game.platforms.erase(game.platforms.begin() + game.selectedIndex);
+                    game.selectedIndex = -1;
+                }
+                else if (game.selectedSpikeIndex >= 0 && game.selectedSpikeIndex < (int)game.spikes.size())
+                {
+                    game.spikes.erase(game.spikes.begin() + game.selectedSpikeIndex);
+                    game.selectedSpikeIndex = -1;
+                }
             }
         }
 
@@ -619,7 +820,7 @@ int main () {
         if (game.editMode)
         {
             DrawText("EDITOR MODE", 10, 10, 18, black);
-            DrawText("E - Toggle | Right-click - New Box | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
+            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
         }
 
         EndDrawing();
