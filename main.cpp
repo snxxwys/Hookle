@@ -39,18 +39,27 @@ class platform
         Vector2 position;
         Vector2 size;
         int thickness = 10;
+        bool visible = true;
 
-        platform() { position = {0,0}; size = {100,20}; }
+        platform() { position = {0,0}; size = {100,20}; visible = true; }
 
-        platform(float xPos, float yPos, float width, float height)
+        platform(float xPos, float yPos, float width, float height, bool vis = true)
         {
             position = {xPos, yPos};
             size = {width, height};
+            visible = vis;
         }
 
-        void draw()
+        void draw(bool editor)
         {
-            DrawRectangleV(position, size, black);
+            if (visible)
+            {
+                DrawRectangleV(position, size, black);
+            }
+            else if (!visible && editor)
+            {
+                DrawRectangleV(position, size, selected);
+            }
         }
 
         Rectangle getRect()
@@ -253,9 +262,9 @@ class Game
         void gameStart()
         {
             player.position = {screenWidth / 2, screenHeight /2};
-            platforms.push_back(platform(300, 500, 400, 40));
-            platforms.push_back(platform(800, 400, 200, 40));
-            platforms.push_back(platform(100, 300, 250, 40));
+            platforms.push_back(platform(300, 500, 400, 40, true));
+            platforms.push_back(platform(800, 400, 200, 40, true));
+            platforms.push_back(platform(100, 300, 250, 40, true));
             camera.offset = {screenWidth/2.0f, screenHeight/2.0f};
             camera.rotation = 0;
             camera.zoom = 1.0f;
@@ -527,6 +536,11 @@ class Game
                     DrawRectangle(rint(p.position.x + p.size.x) - 5, rint(p.position.y) - 5, 10, 10, darkBlue);
                     DrawRectangle(rint(p.position.x + p.size.x) - 5, rint(p.position.y + p.size.y) - 5, 10, 10, darkBlue);
                     DrawRectangle(rint(p.position.x) - 5, rint(p.position.y + p.size.y) - 5, 10, 10, darkBlue);
+
+                    if(IsKeyPressed(KEY_V))
+                    {
+                        p.visible = !p.visible;
+                    }
                 }
                 else if (i == hoverIndex)
                 {
@@ -535,7 +549,7 @@ class Game
                 }
                 else
                 {
-                    p.draw();
+                    p.draw(editMode);
                 }
             }
             if (hoverIndex >= 0)
@@ -555,7 +569,7 @@ class Game
             if (!editMode)
             {
                 player.draw();
-                for (auto& plat : platforms) plat.draw();
+                for (auto& plat : platforms) plat.draw(editMode);
             }
             else
             {
@@ -606,8 +620,11 @@ class Game
             for (size_t i = 0; i < platforms.size(); ++i)
             {
                 platform &p = platforms[i];
-                out << "    {\"x\":" << p.position.x << ",\"y\":" << p.position.y
-                    << ",\"w\":" << p.size.x << ",\"h\":" << p.size.y << "}";
+                out << "    {\"x\":" << p.position.x
+                    << ",\"y\":" << p.position.y
+                    << ",\"w\":" << p.size.x 
+                    << ",\"h\":" << p.size.y 
+                    << ",\"visible\":" << (p.visible ? "true" : "false") << "}";
                 if (i + 1 < platforms.size()) out << ",";
                 out << "\n";
             }
@@ -637,7 +654,7 @@ class Game
             in.close();
 
             // --- Load platforms ---
-            regex platformRegex("\\{\"x\":(.*?),\"y\":(.*?),\"w\":(.*?),\"h\":(.*?)\\}");
+            regex platformRegex("\\{\"x\":(.*?),\"y\":(.*?),\"w\":(.*?),\"h\":(.*?),\"visible\":(true|false)\\}");
             sregex_iterator pit(content.begin(), content.end(), platformRegex);
             sregex_iterator end;
             vector<platform> newPlats;
@@ -647,7 +664,8 @@ class Game
                 float y = stof((*pit)[2].str());
                 float w = stof((*pit)[3].str());
                 float h = stof((*pit)[4].str());
-                newPlats.emplace_back(x, y, w, h);
+                bool vis = ((*pit)[5].str() == "true");
+                newPlats.emplace_back(x, y, w, h, vis);
             }
 
             // --- Load spikes ---
@@ -705,7 +723,7 @@ int main () {
     Image icon = LoadImage("textures/icon.png");
     SetWindowIcon(icon);
 
-    game.loadFromJson("tutorial.json");
+    game.loadFromJson("levels/tutorial.json");
 
     bool showSaveBox = false;
     bool showLoadBox = false;
@@ -732,8 +750,6 @@ int main () {
         if (IsKeyPressed(KEY_L) && game.editMode && !blockInput)
         {
             showLoadBox = true;
-            //game.loadFromJson("main.json");
-            //PlaySound(loadSound);
         }
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE) && !blockInput)
         {
@@ -851,7 +867,7 @@ int main () {
         if (game.editMode)
         {
             DrawText("EDITOR MODE", 10, 10, 18, black);
-            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | O - Save | L - Load", 10, 30, 18, black);
+            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | V - Toggle Visiblity | O - Save | L - Load", 10, 30, 18, black);
         }
 
         if (showSaveBox)
@@ -899,9 +915,8 @@ int main () {
             float spacing = 8;
             float totalHeight = (buttonHeight + spacing) * (float)levelFiles.size();
 
-            content = { 0, 0, panel.width - 20, totalHeight }; // scrollable content size
+            content = { 0, 0, panel.width - 20, totalHeight };
 
-            // ✅ NEW: updated function call
             GuiScrollPanel(panel, NULL, content, &scroll, &view);
 
             BeginScissorMode(panel.x, panel.y, panel.width, panel.height);
@@ -927,7 +942,6 @@ int main () {
 
             EndScissorMode();
 
-            // Close button
             Rectangle closeBtn = { rec.x + size.x - 110, rec.y + size.y - 50, 100, 35 };
             if (GuiButton(closeBtn, "Close")) {
                 showLoadBox = false;
