@@ -130,6 +130,27 @@ class Spike
         }
 };
 
+class EndPoint {
+    public:
+        Vector2 position;
+        Vector2 size;
+        bool goToMenu;
+
+        EndPoint(float x = 0, float y = 0, float w = 60, float h = 60, bool toMenu = false)
+            : position({x, y}), size({w, h}), goToMenu(toMenu) {}
+
+        void draw(bool highlight = false) {
+            Color c = goToMenu ? (Color){255, 182, 193, 255} : (Color){144, 238, 144, 255};
+            if (highlight) c = (Color){255, 255, 0, 255};
+            DrawRectangleV(position, size, c);
+            DrawRectangleLinesEx({position.x, position.y, size.x, size.y}, 2, BLACK);
+        }
+
+        Rectangle getRect() const {
+            return {position.x, position.y, size.x, size.y};
+        }
+};
+
 
 class Player
 {
@@ -282,18 +303,37 @@ class Game
         vector<platform> platforms;
         vector<Spike> spikes;
         Camera2D camera = {0};
+
         bool editMode = false;
         int selectedIndex = -1;
+
         EditAction currentAction = NONE;
         ResizeMask resizeMask;
+
         Vector2 dragOffset = {0,0};
         Vector2 originalPos = {0,0};
         Vector2 originalSize = {0,0};
+
         float edgeGrab = 8.0f;
         float minSize = 8.0f;
+
         bool draggingSpike = false;
         int selectedSpikeIndex = -1;
         Vector2 spikeDragOffset = {0, 0};
+
+        std::vector<EndPoint> endPoints;
+        int selectedEndIndex = -1;
+        bool draggingEnd = false;
+        Vector2 endDragOffset = {0, 0};
+
+        vector<string> levelOrder = {
+            "tutorial",
+            "level1",
+            "level2"
+        };
+        string currentLevelName = "tutorial";
+
+        Sound endSound;
 
         void gameStart()
         {
@@ -418,140 +458,281 @@ class Game
         void update()
         {
             float lerpFactor = 0.1f;
+
+            // --- PLAY MODE ---
             if (!editMode)
             {
                 player.update(platforms, spikes);
                 camera.target.x = Lerp(camera.target.x, player.position.x, lerpFactor);
                 camera.target.y = Lerp(camera.target.y, player.position.y, lerpFactor);
-            }
-            else
-            {
-                Vector2 mouseScreen = GetMousePosition();
-                Vector2 mouseWorld = GetScreenToWorld2D(mouseScreen, camera);
-                if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !blockInput)
+
+                // --- Endpoint collision detection (level transitions) ---
+                Rectangle playerRect = {
+                    player.position.x - playerSize / 2,
+                    player.position.y - playerSize / 2,
+                    playerSize, playerSize
+                };
+
+                for (auto &ep : endPoints)
                 {
-                    int idx = pickPlatformAtPoint(mouseWorld);
-                    int spikeIdx = pickSpikeAtPoint(mouseWorld);
-
-                    if (spikeIdx != -1)
+                    if (CheckCollisionRecs(playerRect, ep.getRect()))
                     {
-                        // --- Spike selection toggle ---
-                        if (selectedSpikeIndex == spikeIdx)
-                            selectedSpikeIndex = -1;
-                        else {
-                            selectedSpikeIndex = spikeIdx;
-                            selectedIndex = -1;
-                        }
+                        PlaySound(endSound);
 
-                        if (selectedSpikeIndex != -1)
+                        if (ep.goToMenu)
                         {
-                            draggingSpike = true;
-                            spikeDragOffset = Vector2Subtract(spikes[spikeIdx].position, mouseWorld);
-                        }
-                    }
-                    else if (idx != -1)
-                    {
-                        platform &p = platforms[idx];
-                        ResizeMask m = calcResizeMask(p, mouseWorld);
-
-                        // --- Check if we're clicking the edge of the selected platform ---
-                        if (selectedIndex == idx && m.any())
-                        {
-                            currentAction = RESIZE;
-                            resizeMask = m;
-                            originalPos = p.position;
-                            originalSize = p.size;
+                            inMenu = true;
+                            blockInput = true;
+                            allowEditor = false;
+                            player.position = {screenWidth / 2, screenHeight /2};
+                            player.xVelocity = 0;
+                            player.yVelocity = 0;
+                            player.swinging = false;
                         }
                         else
                         {
-                            // --- Toggle selection ---
-                            if (selectedIndex == idx)
-                                selectedIndex = -1;
-                            else {
-                                selectedIndex = idx;
-                                selectedSpikeIndex = -1;
-                            }
-
-                            // Start drag only if we actually selected it
-                            if (selectedIndex != -1)
+                            auto it = std::find(levelOrder.begin(), levelOrder.end(), currentLevelName);
+                            if (it != levelOrder.end())
                             {
-                                startDrag(idx, mouseWorld);
+                                ++it;
+                                if (it != levelOrder.end())
+                                {
+                                    currentLevelName = *it;
+                                    loadFromJson("levels/" + currentLevelName + ".json");
+                                    player.position = {screenWidth / 2, screenHeight /2};
+                                    player.xVelocity = 0;
+                                    player.yVelocity = 0;
+                                    player.swinging = false;
+                                }
+                                else
+                                {
+                                    inMenu = true;
+                                    allowEditor = false;
+                                    blockInput = true;
+                                    player.position = {screenWidth / 2, screenHeight /2};
+                                    player.xVelocity = 0;
+                                    player.yVelocity = 0;
+                                    player.swinging = false;
+                                }
+                            }
+                            else
+                            {
+                                inMenu = true;
+                                allowEditor = false;
+                                blockInput = true;
+                                player.position = {screenWidth / 2, screenHeight /2};
+                                player.xVelocity = 0;
+                                player.yVelocity = 0;
+                                player.swinging = false;
                             }
                         }
+                        break;
+                    }
+                }
+
+                return;
+            }
+
+            // --- EDITOR MODE ---
+            Vector2 mouseScreen = GetMousePosition();
+            Vector2 mouseWorld = GetScreenToWorld2D(mouseScreen, camera);
+
+            // We'll track endIdx across the entire frame
+            int endIdx = -1;
+            for (int i = (int)endPoints.size() - 1; i >= 0; --i)
+            {
+                Rectangle r = endPoints[i].getRect();
+                if (CheckCollisionPointRec(mouseWorld, r))
+                {
+                    endIdx = i;
+                    break;
+                }
+            }
+
+            // --- LEFT CLICK ---
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && !blockInput)
+            {
+                int idx = pickPlatformAtPoint(mouseWorld);
+                int spikeIdx = pickSpikeAtPoint(mouseWorld);
+
+                if (spikeIdx != -1)
+                {
+                    // --- Spike selection toggle ---
+                    if (selectedSpikeIndex == spikeIdx)
+                        selectedSpikeIndex = -1;
+                    else
+                    {
+                        selectedSpikeIndex = spikeIdx;
+                        selectedIndex = -1;
+                        selectedEndIndex = -1;
+                    }
+
+                    if (selectedSpikeIndex != -1)
+                    {
+                        draggingSpike = true;
+                        spikeDragOffset = Vector2Subtract(spikes[spikeIdx].position, mouseWorld);
+                    }
+                }
+                else if (idx != -1)
+                {
+                    platform &p = platforms[idx];
+                    ResizeMask m = calcResizeMask(p, mouseWorld);
+
+                    // --- Check if we're clicking the edge of the selected platform ---
+                    if (selectedIndex == idx && m.any())
+                    {
+                        currentAction = RESIZE;
+                        resizeMask = m;
+                        originalPos = p.position;
+                        originalSize = p.size;
                     }
                     else
                     {
+                        // --- Toggle selection ---
+                        if (selectedIndex == idx)
+                            selectedIndex = -1;
+                        else
+                        {
+                            selectedIndex = idx;
+                            selectedSpikeIndex = -1;
+                            selectedEndIndex = -1;
+                        }
+
+                        // Start drag only if we actually selected it
+                        if (selectedIndex != -1)
+                        {
+                            startDrag(idx, mouseWorld);
+                        }
+                    }
+                }
+                else if (endIdx != -1)
+                {
+                    // --- Endpoint selection toggle ---
+                    if (selectedEndIndex == endIdx)
+                        selectedEndIndex = -1;
+                    else
+                    {
+                        selectedEndIndex = endIdx;
                         selectedIndex = -1;
                         selectedSpikeIndex = -1;
                     }
-                }
 
-                if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !blockInput)
-                {
-                    if (draggingSpike && selectedSpikeIndex != -1)
+                    if (selectedEndIndex != -1)
                     {
-                        spikes[selectedSpikeIndex].position = Vector2Add(mouseWorld, spikeDragOffset);
-                    }
-                    else if (currentAction != NONE)
-                    {
-                        applyDrag(mouseWorld);
+                        draggingEnd = true;
+                        endDragOffset = Vector2Subtract(endPoints[endIdx].position, mouseWorld);
                     }
                 }
-
-                if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && !blockInput)
+                else
                 {
-                    if (draggingSpike && selectedSpikeIndex != -1)
-                    {
-                        // --- SNAP TO PLATFORM TOP ---
-                        float snapThreshold = 20.0f;
-                        Spike &s = spikes[selectedSpikeIndex];
-
-                        for (auto &p : platforms)
-                        {
-                            Rectangle pr = p.getRect();
-                            float topY = pr.y;
-
-                            bool withinX =
-                                (s.position.x + s.size / 2 > pr.x - snapThreshold) &&
-                                (s.position.x + s.size / 2 < pr.x + pr.width + snapThreshold);
-
-                            bool nearTop = fabs((s.position.y) - topY) < snapThreshold;
-
-                            if (withinX && nearTop)
-                            {
-                                s.position.y = topY; // Snap vertically
-                                s.position.x = Clamp(s.position.x, pr.x - s.size / 2, pr.x + pr.width - s.size / 2);
-                                break;
-                            }
-                        }
-
-                        draggingSpike = false;
-                        selectedSpikeIndex = -1;
-                    }
-                    else
-                    {
-                        endDrag();
-                    }
-                }
-
-                if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !blockInput)
-                {
-                    Vector2 size = {150, 30};
-                    Vector2 pos = { mouseWorld.x - size.x/2.0f, mouseWorld.y - size.y/2.0f };
-                    platforms.emplace_back(pos.x, pos.y, size.x, size.y);
-                    selectedIndex = (int)platforms.size() - 1;
-                }
-                if (IsKeyPressed(KEY_Q))
-                {
-                    Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), camera);
-                    spikes.emplace_back(mouseWorld.x - 20, mouseWorld.y + 20);
+                    selectedIndex = -1;
+                    selectedSpikeIndex = -1;
+                    selectedEndIndex = -1;
                 }
             }
-            camera.offset = {screenWidth/2.0f, screenHeight/2.0f};
+
+            // --- DRAGGING ---
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON) && !blockInput)
+            {
+                if (draggingSpike && selectedSpikeIndex != -1)
+                {
+                    spikes[selectedSpikeIndex].position = Vector2Add(mouseWorld, spikeDragOffset);
+                }
+                else if (currentAction != NONE)
+                {
+                    applyDrag(mouseWorld);
+                }
+                else if (draggingEnd && selectedEndIndex != -1)
+                {
+                    endPoints[selectedEndIndex].position = Vector2Add(mouseWorld, endDragOffset);
+                }
+            }
+
+            // --- RELEASE ---
+            if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON) && !blockInput)
+            {
+                if (draggingSpike && selectedSpikeIndex != -1)
+                {
+                    // --- SNAP TO PLATFORM TOP ---
+                    float snapThreshold = 20.0f;
+                    Spike &s = spikes[selectedSpikeIndex];
+
+                    for (auto &p : platforms)
+                    {
+                        Rectangle pr = p.getRect();
+                        float topY = pr.y;
+
+                        bool withinX =
+                            (s.position.x + s.size / 2 > pr.x - snapThreshold) &&
+                            (s.position.x + s.size / 2 < pr.x + pr.width + snapThreshold);
+
+                        bool nearTop = fabs((s.position.y) - topY) < snapThreshold;
+
+                        if (withinX && nearTop)
+                        {
+                            s.position.y = topY; // Snap vertically
+                            s.position.x = Clamp(s.position.x, pr.x - s.size / 2, pr.x + pr.width - s.size / 2);
+                            break;
+                        }
+                    }
+
+                    draggingSpike = false;
+                    selectedSpikeIndex = -1;
+                }
+                else if (draggingEnd)
+                {
+                    draggingEnd = false;
+                    selectedEndIndex = -1;
+                }
+                else
+                {
+                    endDrag();
+                }
+            }
+
+            // --- CREATE NEW OBJECTS ---
+            if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON) && !blockInput)
+            {
+                Vector2 size = {150, 30};
+                Vector2 pos = {mouseWorld.x - size.x / 2.0f, mouseWorld.y - size.y / 2.0f};
+                platforms.emplace_back(pos.x, pos.y, size.x, size.y);
+                selectedIndex = (int)platforms.size() - 1;
+            }
+
+            if (IsKeyPressed(KEY_Q))
+            {
+                Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), camera);
+                spikes.emplace_back(mouseWorld.x - 20, mouseWorld.y + 20);
+            }
+
+            if (IsKeyPressed(KEY_T))
+            {
+                Vector2 mouseWorld = GetScreenToWorld2D(GetMousePosition(), camera);
+                if (endPoints.empty())
+                {
+                    endPoints.emplace_back(mouseWorld.x - 30, mouseWorld.y - 30, 60, 60, false);
+                }
+                else
+                {
+                    endPoints[0].position = { mouseWorld.x - 30, mouseWorld.y - 30 };
+                }
+            }
+
+            if (IsKeyPressed(KEY_Y))
+            {
+                if (selectedEndIndex >= 0 && selectedEndIndex < (int)endPoints.size())
+                {
+                    endPoints[selectedEndIndex].goToMenu = !endPoints[selectedEndIndex].goToMenu;
+                }
+            }
+
+            // --- CAMERA SETUP ---
+            camera.offset = {screenWidth / 2.0f, screenHeight / 2.0f};
             camera.rotation = 0;
-            if (camera.zoom <= 0.01f) camera.zoom = 1.0f;
-            camera.zoom = camera.zoom;
+            if (camera.zoom <= 0.01f)
+                camera.zoom = 1.0f;
         }
+
 
         void drawEditorUI()
         {
@@ -632,6 +813,11 @@ class Game
                 bool highlight = (i == selectedSpikeIndex);
                 spikes[i].draw(highlight);
             }
+
+            for (int i = 0; i < (int)endPoints.size(); i++) {
+                bool highlight = (i == selectedEndIndex);
+                endPoints[i].draw(highlight);
+            }
         }
 
         void reset(Sound resetSound)
@@ -676,6 +862,20 @@ class Game
                 out << "\n";
             }
             out << "  ]\n";
+
+            out << "  ,\"endpoints\": [\n";
+            for (size_t i = 0; i < endPoints.size(); ++i) {
+                EndPoint &ep = endPoints[i];
+                out << "    {\"x\":" << ep.position.x
+                    << ",\"y\":" << ep.position.y
+                    << ",\"w\":" << ep.size.x
+                    << ",\"h\":" << ep.size.y
+                    << ",\"toMenu\":" << (ep.goToMenu ? "true" : "false") << "}";
+                if (i + 1 < endPoints.size()) out << ",";
+                out << "\n";
+            }
+            out << "  ]\n";
+
             out << "}\n";
 
             out.close();
@@ -716,8 +916,22 @@ class Game
                 newSpikes.emplace_back(x, y, size);
             }
 
+            regex endRegex("\\{\"x\":(.*?),\"y\":(.*?),\"w\":(.*?),\"h\":(.*?),\"toMenu\":(true|false)\\}");
+            sregex_iterator eit(content.begin(), content.end(), endRegex);
+            vector<EndPoint> newEnds;
+            for (; eit != end; ++eit)
+            {
+                float x = stof((*eit)[1].str());
+                float y = stof((*eit)[2].str());
+                float w = stof((*eit)[3].str());
+                float h = stof((*eit)[4].str());
+                bool toMenu = ((*eit)[5].str() == "true");
+                newEnds.emplace_back(x, y, w, h, toMenu);
+            }
+
             platforms = std::move(newPlats);
             spikes = std::move(newSpikes);
+            endPoints = std::move(newEnds);
             selectedIndex = -1;
             return true;
         }
@@ -755,6 +969,10 @@ int main () {
 
     Sound hoverSound = LoadSound("sounds/hover.mp3");
     SetSoundVolume(hoverSound, .5);
+
+    Sound endSound = LoadSound("sounds/end.mp3");
+    SetSoundVolume(endSound, .2);
+    game.endSound = endSound;
 
     Music music = LoadMusicStream("sounds/music.mp3");
     SetMusicVolume(music, .2f);
@@ -960,14 +1178,14 @@ int main () {
         {
             if(game.editMode)
             {
-                DrawText("EDITOR MODE", 10, 10, 18, selected);
+                DrawText("EDITOR MODE | E", 10, 10, 18, selected);
+                DrawText("Right-click - New Box | Q - New Spike | Delete - Remove | V - Toggle Platform Visiblity | O - Save | L - Load", 10, 30, 18, black);
+                DrawText("T - New EndPoint | Y - Toggle End Type (Next/Menu)", 10, 50, 18, black);
             }
             else
             {
-                DrawText("EDITOR MODE", 10, 10, 18, black);
+                DrawText("EDITOR MODE | E", 10, 10, 18, black);
             }
-
-            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | V - Toggle Platform Visiblity | O - Save | L - Load", 10, 30, 18, black);
         }
 
         if (showSaveBox)
@@ -1059,6 +1277,7 @@ int main () {
     UnloadSound(loadSound);
     UnloadSound(saveSound);
     UnloadSound(hoverSound);
+    UnloadSound(endSound);
     UnloadImage(logo);
     UnloadTexture(logoTexture);
     UnloadMusicStream(music);
