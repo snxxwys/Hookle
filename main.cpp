@@ -17,7 +17,8 @@ const float playerSpeed = 100;
 const int gravity = 1300;
 const int jumpForce = 600;
 
-bool blockInput = false;
+bool blockInput = true;
+bool inMenu = true;
 
 Color lightBlue = {181, 215, 251, 255};
 Color darkBlue = {139, 169, 225, 255};
@@ -30,8 +31,37 @@ Color black = {25, 25, 25, 255};
 Color hover = {63, 63, 63, 255};
 Color selected = {209, 94, 71, 255};
 
+Color menuColor = {30, 30, 30, 255};
+Color menuText = {217, 43, 68, 255};
+
 using namespace std;
 namespace fs = filesystem;
+
+struct MenuButton {
+    std::string text;
+    Rectangle rect;
+    float hoverOffset = 0;
+    bool clicked = false;
+
+    void update(Vector2 mousePos, float deltaTime) {
+        bool hovering = CheckCollisionPointRec(mousePos, rect);
+        float targetOffset = hovering ? 50.0f : 40.0f;
+        hoverOffset = hoverOffset + (targetOffset - hoverOffset) * (10.0f * deltaTime);
+    }
+
+    void draw() {
+        //DrawRectangleRec({rect.x + hoverOffset, rect.y, rect.width, rect.height}, LIGHTGRAY);
+        //DrawRectangleLinesEx({rect.x + hoverOffset, rect.y, rect.width, rect.height}, 2, BLACK);
+        int fontSize = 20;
+        Vector2 textSize = MeasureTextEx(GetFontDefault(), text.c_str(), fontSize, 1);
+        DrawText(text.c_str(), rect.x + hoverOffset + 10, rect.y + rect.height/2 - textSize.y/2, fontSize, LIGHTGRAY);
+    }
+
+    bool isPressed(Vector2 mousePos) {
+        return CheckCollisionPointRec(mousePos, {rect.x + hoverOffset, rect.y, rect.width, rect.height}) && IsMouseButtonReleased(MOUSE_LEFT_BUTTON);
+    }
+};
+
 
 class platform
 {
@@ -720,10 +750,19 @@ int main () {
     Music music = LoadMusicStream("sounds/music.mp3");
     SetMusicVolume(music, .2f);
 
-    Image icon = LoadImage("textures/icon.png");
-    SetWindowIcon(icon);
+    Image logo = LoadImage("textures/hooklemain.png");
+    ImageResizeNN(&logo, logo.width/3, logo.height/3);
+    Texture logoTexture = LoadTextureFromImage(logo);
 
-    game.loadFromJson("levels/tutorial.json");
+    vector<MenuButton> menuButtons;
+
+    menuButtons.push_back({"Play", Rectangle{20, (float)logoTexture.height + 50, 200, 50}});
+    menuButtons.push_back({"Options", Rectangle{20, (float)logoTexture.height + 110, 200, 50}});
+    menuButtons.push_back({"Credits", Rectangle{20, (float)logoTexture.height + 170, 200, 50}});
+
+
+    //game.loadFromJson("levels/tutorial.json");
+    game.loadFromJson("levels/blank.json");
 
     bool showSaveBox = false;
     bool showLoadBox = false;
@@ -852,17 +891,48 @@ int main () {
             }
         }
 
-        game.update();
+        if (!inMenu) {game.update();}
 
         BeginDrawing();
 
-        ClearBackground(white);
+        if(inMenu)
+        {
+            ClearBackground(menuColor);
 
-        BeginMode2D(game.camera);
+            DrawTexture(logoTexture, 5, 30, WHITE);
 
-        game.draw();
+            Vector2 mousePos = GetMousePosition();
+            float deltaTime = GetFrameTime();
 
-        EndMode2D();
+            for (auto &btn : menuButtons) {
+                btn.update(mousePos, deltaTime);
+                btn.draw();
+
+                if (btn.isPressed(mousePos)) {
+                    if (btn.text == "Play") {
+                        inMenu = false;
+                        blockInput = false;
+                        game.loadFromJson("levels/tutorial.json");
+                    }
+                    else if (btn.text == "Options") {
+                        // open options
+                    }
+                    else if (btn.text == "Credits") {
+                        // open credits
+                    }
+                }
+            }
+        }
+        else
+        {
+            ClearBackground(white);
+
+            BeginMode2D(game.camera);
+
+            game.draw();
+
+            EndMode2D();
+        }
 
         if (game.editMode)
         {
@@ -958,6 +1028,8 @@ int main () {
     UnloadSound(launchSound);
     UnloadSound(loadSound);
     UnloadSound(saveSound);
+    UnloadImage(logo);
+    UnloadTexture(logoTexture);
     UnloadMusicStream(music);
     CloseAudioDevice();
     
