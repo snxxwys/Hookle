@@ -19,6 +19,7 @@ const int jumpForce = 600;
 
 bool blockInput = true;
 bool inMenu = true;
+bool allowEditor = false;
 
 Color lightBlue = {181, 215, 251, 255};
 Color darkBlue = {139, 169, 225, 255};
@@ -42,11 +43,16 @@ struct MenuButton {
     Rectangle rect;
     float hoverOffset = 0;
     bool clicked = false;
+    bool wasHovering = false;
 
-    void update(Vector2 mousePos, float deltaTime) {
+    void update(Vector2 mousePos, float deltaTime, Sound sound) {
         bool hovering = CheckCollisionPointRec(mousePos, rect);
         float targetOffset = hovering ? 50.0f : 40.0f;
         hoverOffset = hoverOffset + (targetOffset - hoverOffset) * (10.0f * deltaTime);
+
+        if (hovering && !wasHovering) {PlaySound(sound);}
+
+        wasHovering = hovering;
     }
 
     void draw() {
@@ -747,6 +753,9 @@ int main () {
     Sound saveSound = LoadSound("sounds/save.mp3");
     Sound loadSound = LoadSound("sounds/load.wav");
 
+    Sound hoverSound = LoadSound("sounds/hover.mp3");
+    SetSoundVolume(hoverSound, .5);
+
     Music music = LoadMusicStream("sounds/music.mp3");
     SetMusicVolume(music, .2f);
 
@@ -757,8 +766,8 @@ int main () {
     vector<MenuButton> menuButtons;
 
     menuButtons.push_back({"Play", Rectangle{20, (float)logoTexture.height + 50, 200, 50}});
-    menuButtons.push_back({"Options", Rectangle{20, (float)logoTexture.height + 110, 200, 50}});
-    menuButtons.push_back({"Credits", Rectangle{20, (float)logoTexture.height + 170, 200, 50}});
+    menuButtons.push_back({"Sandbox", Rectangle{20, (float)logoTexture.height + 110, 200, 50}});
+    menuButtons.push_back({"Options", Rectangle{20, (float)logoTexture.height + 170, 200, 50}});
 
 
     //game.loadFromJson("levels/tutorial.json");
@@ -775,11 +784,20 @@ int main () {
 
     while (!WindowShouldClose())
     {
-        if (IsKeyPressed(KEY_E) && !blockInput)
+        if (IsKeyPressed(KEY_E) && !blockInput && allowEditor)
         {
             game.editMode = !game.editMode;
             game.currentAction = NONE;
             game.selectedIndex = -1;
+        }
+
+        if (IsKeyPressed(KEY_TAB) && !inMenu)
+        {
+            blockInput = true;
+            inMenu = true;
+            allowEditor = false;
+            game.reset(resetSound);
+            game.editMode = false;
         }
 
         if (IsKeyPressed(KEY_O) && game.editMode && !blockInput)
@@ -905,20 +923,24 @@ int main () {
             float deltaTime = GetFrameTime();
 
             for (auto &btn : menuButtons) {
-                btn.update(mousePos, deltaTime);
+                btn.update(mousePos, deltaTime, hoverSound);
                 btn.draw();
 
                 if (btn.isPressed(mousePos)) {
+                    PlaySound(launchSound);
                     if (btn.text == "Play") {
                         inMenu = false;
                         blockInput = false;
                         game.loadFromJson("levels/tutorial.json");
                     }
-                    else if (btn.text == "Options") {
-                        // open options
+                    else if (btn.text == "Sandbox") {
+                        inMenu = false;
+                        blockInput = false;
+                        allowEditor = true;
+                        game.loadFromJson("levels/tutorial.json");
                     }
-                    else if (btn.text == "Credits") {
-                        // open credits
+                    else if (btn.text == "Options") {
+
                     }
                 }
             }
@@ -934,10 +956,18 @@ int main () {
             EndMode2D();
         }
 
-        if (game.editMode)
+        if (allowEditor)
         {
-            DrawText("EDITOR MODE", 10, 10, 18, black);
-            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | V - Toggle Visiblity | O - Save | L - Load", 10, 30, 18, black);
+            if(game.editMode)
+            {
+                DrawText("EDITOR MODE", 10, 10, 18, selected);
+            }
+            else
+            {
+                DrawText("EDITOR MODE", 10, 10, 18, black);
+            }
+
+            DrawText("E - Toggle | Right-click - New Box | Q - New Spike | Delete - Remove | V - Toggle Platform Visiblity | O - Save | L - Load", 10, 30, 18, black);
         }
 
         if (showSaveBox)
@@ -1028,6 +1058,7 @@ int main () {
     UnloadSound(launchSound);
     UnloadSound(loadSound);
     UnloadSound(saveSound);
+    UnloadSound(hoverSound);
     UnloadImage(logo);
     UnloadTexture(logoTexture);
     UnloadMusicStream(music);
